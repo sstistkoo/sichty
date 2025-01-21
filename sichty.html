@@ -86,7 +86,7 @@
                 flex-direction: column;
                 align-items: center;
             }
-            
+
             .shift-select {
                 flex-wrap: wrap;
                 justify-content: center;
@@ -449,12 +449,15 @@
             <button class="action-btn" onclick="toggleYearView()">
                 <i class="fas fa-calendar"></i> Celoroční výpis
             </button>
+            <button class="action-btn" onclick="showWageCalculator()">
+                <i class="fas fa-calculator"></i> Mzdová kalkulačka
+            </button>
         </div>
     </div>
 
     <div class="main-content">
         <h1 style="text-align: center;">Progres směny 2025</h1>
-        
+
         <div class="controls">
             <button class="nav-btn" onclick="previousMonth()">←</button>
             <select id="monthSelect" class="month-select">
@@ -472,7 +475,7 @@
                 <option value="11">Prosinec</option>
             </select>
             <button class="nav-btn" onclick="nextMonth()">→</button>
-            
+
             <div class="shift-select">
                 <button class="shift-btn active" data-shift="A">Směna A</button>
                 <button class="shift-btn" data-shift="B">Směna B</button>
@@ -503,6 +506,94 @@
         </div>
 
         <div id="notification" class="notification"></div>
+
+        <!-- Přidání modálního okna pro mzdovou kalkulačku -->
+        <div id="wageCalculatorModal" class="modal">
+            <div class="modal-content" style="max-width: 800px; max-height: 90vh; overflow-y: auto;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h2>Mzdová kalkulačka - <span id="selectedMonthName"></span></h2>
+                    <button class="action-btn secondary" onclick="closeWageCalculator()" style="margin: 0;">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="wage-calculator">
+                    <div class="input-group" style="display: grid; gap: 15px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
+                        <div class="input-field">
+                            <label>Základní hodinová mzda</label>
+                            <input type="number" id="baseWage" value="150" min="0" step="1">
+                        </div>
+                        <div class="input-field">
+                            <label>Příplatek za noční (%)</label>
+                            <input type="number" id="nightBonus" value="20" min="0" step="1">
+                        </div>
+                        <div class="input-field">
+                            <label>Příplatek za víkend (%)</label>
+                            <input type="number" id="weekendBonus" value="10" min="0" step="1">
+                        </div>
+                        <div class="input-field">
+                            <label>Příplatek za svátek (%)</label>
+                            <input type="number" id="holidayBonus" value="100" min="0" step="1">
+                        </div>
+                        <div class="input-field">
+                            <label>Příplatek za nepřetržitý provoz (%)</label>
+                            <input type="number" id="continuousBonus" value="7" min="0" step="1">
+                        </div>
+                        <div class="input-field">
+                            <label>Počet dětí</label>
+                            <input type="number" id="childCount" value="0" min="0" step="1">
+                        </div>
+                        <div class="input-field">
+                            <label>Invalidní důchod</label>
+                            <select id="disability">
+                                <option value="0">Žádný</option>
+                                <option value="1">1. a 2. stupně</option>
+                                <option value="2">3. stupně</option>
+                            </select>
+                        </div>
+                        <div class="input-field">
+                            <label>Student</label>
+                            <input type="checkbox" id="isStudent">
+                        </div>
+                        <div class="input-field">
+                            <label>Podepsané prohlášení k dani</label>
+                            <input type="checkbox" id="hasTaxDeclaration" checked>
+                        </div>
+                    </div>
+
+                    <div class="shift-summary" style="margin-top: 20px; padding: 15px; background: var(--background-color); border-radius: 4px;">
+                        <h3>Přehled směn v měsíci</h3>
+                        <div style="display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
+                            <div>
+                                <strong>Ranní směny:</strong>
+                                <span id="morningShiftCount">0</span>
+                            </div>
+                            <div>
+                                <strong>Noční směny:</strong>
+                                <span id="nightShiftCount">0</span>
+                            </div>
+                            <div>
+                                <strong>Víkendové směny:</strong>
+                                <span id="weekendShiftCount">0</span>
+                            </div>
+                            <div>
+                                <strong>Sváteční směny:</strong>
+                                <span id="holidayShiftCount">0</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="results" style="margin-top: 20px; padding: 15px; background: var(--background-color); border-radius: 4px;">
+                        <h3>Výsledky výpočtu</h3>
+                        <div id="wageResults" style="display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
+                        </div>
+                    </div>
+
+                    <button class="action-btn" onclick="calculateWages()" style="margin-top: 20px; width: 100%;">
+                        Vypočítat
+                    </button>
+                </div>
+            </div>
+        </div>
 
         <script>
             let currentShift = 'A';
@@ -541,7 +632,7 @@
                 const currentMonth = parseInt(document.getElementById('monthSelect').value);
                 const shifts = generateShifts('2025-01-04', currentShift);
                 const monthShifts = shifts.filter(s => s.date.getMonth() === currentMonth);
-                
+
                 let icsContent = [
                     'BEGIN:VCALENDAR',
                     'VERSION:2.0',
@@ -554,7 +645,7 @@
                         const summary = shift.shift === 'R' ? 'Ranní směna' : 'Noční směna';
                         const startTime = shift.shift === 'R' ? '060000' : '220000';
                         const endTime = shift.shift === 'R' ? '140000' : '060000';
-                        
+
                         icsContent = icsContent.concat([
                             'BEGIN:VEVENT',
                             `DTSTART;VALUE=DATE-TIME:${dateStr}T${startTime}`,
@@ -566,7 +657,7 @@
                 });
 
                 icsContent.push('END:VCALENDAR');
-                
+
                 const blob = new Blob([icsContent.join('\n')], { type: 'text/calendar' });
                 const url = window.URL.createObjectURL(blob);
                 const a = document.createElement('a');
@@ -610,11 +701,11 @@
                 const modal = document.getElementById('noteModal');
                 const noteDate = document.getElementById('noteDate');
                 const noteText = document.getElementById('noteText');
-                
+
                 const dateStr = date.toLocaleDateString('cs-CZ');
                 noteDate.textContent = dateStr;
                 noteText.value = notes[dateStr] || '';
-                
+
                 modal.style.display = 'flex';
             }
 
@@ -625,13 +716,13 @@
             function saveNote() {
                 const dateStr = document.getElementById('noteDate').textContent;
                 const text = document.getElementById('noteText').value;
-                
+
                 if (text) {
                     notes[dateStr] = text;
                 } else {
                     delete notes[dateStr];
                 }
-                
+
                 closeNoteModal();
                 const yearShifts = generateShifts('2025-01-04', currentShift);
                 createCalendar(yearShifts, parseInt(document.getElementById('monthSelect').value));
@@ -641,13 +732,13 @@
                 const shifts = [];
                 let currentDate = new Date(startDate);
                 const endDate = new Date('2025-12-31');
-                
+
                 const cycleLength = 12;
                 let dayInCycle = 0;
-                
+
                 while (currentDate <= endDate) {
                     let shift = '';
-                    
+
                     switch(shiftType) {
                         case 'A':
                             if (dayInCycle < 3) shift = 'R';
@@ -674,16 +765,16 @@
                             else shift = '-';
                             break;
                     }
-                    
+
                     shifts.push({
                         date: new Date(currentDate),
                         shift: shift
                     });
-                    
+
                     currentDate.setDate(currentDate.getDate() + 1);
                     dayInCycle = (dayInCycle + 1) % cycleLength;
                 }
-                
+
                 return shifts;
             }
 
@@ -736,65 +827,65 @@
                 const dayNames = ['Po', 'Út', 'St', 'Čt', 'Pá', 'So', 'Ne'];
                 const calendar = container || document.getElementById('calendar');
                 calendar.innerHTML = '';
-                
+
                 const today = new Date();
                 const month = selectedMonth !== undefined ? selectedMonth : today.getMonth();
-                
+
                 if (!container) {
                     updateStats(shifts, month);
                 }
-                
+
                 const monthDiv = document.createElement('div');
                 monthDiv.className = 'month';
-                
+
                 const monthName = document.createElement('div');
                 monthName.className = 'month-name';
                 monthName.textContent = months[month];
                 monthDiv.appendChild(monthName);
-                
+
                 const daysDiv = document.createElement('div');
                 daysDiv.className = 'days';
-                
+
                 dayNames.forEach(day => {
                     const dayHeader = document.createElement('div');
                     dayHeader.className = 'day-header';
                     dayHeader.textContent = day;
                     daysDiv.appendChild(dayHeader);
                 });
-                
+
                 const firstDay = new Date(2025, month, 1);
                 let startingDay = firstDay.getDay() || 7;
                 startingDay--;
-                
+
                 for (let i = 0; i < startingDay; i++) {
                     const emptyDay = document.createElement('div');
                     emptyDay.className = 'day';
                     daysDiv.appendChild(emptyDay);
                 }
-                
+
                 const daysInMonth = new Date(2025, month + 1, 0).getDate();
                 const currentWeek = Math.floor((today.getDate() + startingDay - 1) / 7);
-                
+
                 for (let day = 1; day <= daysInMonth; day++) {
                     const currentDate = new Date(2025, month, day);
                     const dayDiv = document.createElement('div');
                     dayDiv.className = 'day';
-                    
+
                     const weekNumber = Math.floor((day + startingDay - 1) / 7);
                     if (weekNumber === currentWeek && month === today.getMonth()) {
                         dayDiv.classList.add('current-week');
                     }
-                    
+
                     if (today.getDate() === day && today.getMonth() === month) {
                         dayDiv.classList.add('current-day');
                     }
-                    
+
                     if (currentDate.getDay() === 0 || currentDate.getDay() === 6) {
                         dayDiv.classList.add('weekend');
                     }
-                    
+
                     dayDiv.innerHTML = day;
-                    
+
                     const holidayDate = `2025-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
                     const holidayInfo = HOLIDAYS.find(h => h.date === holidayDate);
                     if (holidayInfo) {
@@ -804,47 +895,47 @@
                         holidayName.textContent = holidayInfo.name;
                         dayDiv.appendChild(holidayName);
                     }
-                    
-                    const shiftDay = shifts.find(s => 
+
+                    const shiftDay = shifts.find(s =>
                         s.date.getFullYear() === currentDate.getFullYear() &&
                         s.date.getMonth() === currentDate.getMonth() &&
                         s.date.getDate() === currentDate.getDate()
                     );
-                    
+
                     if (shiftDay && shiftDay.shift !== '-') {
                         dayDiv.classList.add(`shift-${shiftDay.shift}`);
                         const shiftSpan = document.createElement('div');
                         shiftSpan.textContent = shiftDay.shift;
                         dayDiv.appendChild(shiftSpan);
                     }
-                    
+
                     const dateStr = currentDate.toLocaleDateString('cs-CZ');
                     if (notes[dateStr]) {
                         const noteIcon = document.createElement('div');
                         noteIcon.className = 'note-icon';
                         noteIcon.innerHTML = '<i class="fas fa-sticky-note"></i>';
                         dayDiv.appendChild(noteIcon);
-                        
+
                         const tooltip = document.createElement('div');
                         tooltip.className = 'tooltip';
                         tooltip.textContent = notes[dateStr];
                         dayDiv.appendChild(tooltip);
                     }
-                    
+
                     dayDiv.addEventListener('dblclick', () => openNoteModal(currentDate));
-                    
+
                     daysDiv.appendChild(dayDiv);
                 }
-                
+
                 monthDiv.appendChild(daysDiv);
                 calendar.appendChild(monthDiv);
-                
+
                 if (!container && notificationsEnabled) {
-                    const nextShift = shifts.find(s => 
-                        s.date > today && 
+                    const nextShift = shifts.find(s =>
+                        s.date > today &&
                         s.shift !== '-'
                     );
-                    
+
                     if (nextShift) {
                         const timeUntilShift = nextShift.date.getTime() - today.getTime();
                         if (timeUntilShift <= 24 * 60 * 60 * 1000) {
@@ -927,7 +1018,7 @@
                             dayClass += ' current-day';
                         }
 
-                        const shiftDay = yearShifts.find(s => 
+                        const shiftDay = yearShifts.find(s =>
                             s.date.getFullYear() === currentDate.getFullYear() &&
                             s.date.getMonth() === currentDate.getMonth() &&
                             s.date.getDate() === currentDate.getDate()
@@ -955,7 +1046,7 @@
                 document.getElementById('monthSelect').value = today.getMonth();
                 const yearShifts = generateShifts('2025-01-04', currentShift);
                 createCalendar(yearShifts, today.getMonth());
-                
+
                 // Inicializace výchozího nastavení bez localStorage
                 darkMode = false;
                 document.body.setAttribute('data-theme', 'light');
@@ -1010,6 +1101,177 @@
 
             // Spuštění kalendáře
             initCalendar();
+
+            // Přidání nových funkcí pro mzdovou kalkulačku
+            function showWageCalculator() {
+                const month = parseInt(document.getElementById('monthSelect').value);
+                const monthNames = [
+                    'Leden', 'Únor', 'Březen', 'Duben', 'Květen', 'Červen',
+                    'Červenec', 'Srpen', 'Září', 'Říjen', 'Listopad', 'Prosinec'
+                ];
+
+                document.getElementById('selectedMonthName').textContent = monthNames[month];
+
+                const shifts = generateShifts('2025-01-04', currentShift);
+                const monthShifts = shifts.filter(s => s.date.getMonth() === month);
+
+                // Počítání směn
+                const morningShifts = monthShifts.filter(s => s.shift === 'R').length;
+                const nightShifts = monthShifts.filter(s => s.shift === 'N').length;
+                const weekendShifts = monthShifts.filter(s => {
+                    const day = s.date.getDay();
+                    return (day === 0 || day === 6) && s.shift !== '-';
+                }).length;
+                const holidayShifts = monthShifts.filter(s => {
+                    const dateStr = `${s.date.getFullYear()}-${String(s.date.getMonth() + 1).padStart(2, '0')}-${String(s.date.getDate()).padStart(2, '0')}`;
+                    return HOLIDAYS.some(h => h.date === dateStr) && s.shift !== '-';
+                }).length;
+
+                // Aktualizace počtu směn v přehledu
+                document.getElementById('morningShiftCount').textContent = morningShifts;
+                document.getElementById('nightShiftCount').textContent = nightShifts;
+                document.getElementById('weekendShiftCount').textContent = weekendShifts;
+                document.getElementById('holidayShiftCount').textContent = holidayShifts;
+
+                document.getElementById('wageCalculatorModal').style.display = 'flex';
+
+                // Automaticky spustit výpočet při otevření
+                calculateWages();
+            }
+
+            function closeWageCalculator() {
+                document.getElementById('wageCalculatorModal').style.display = 'none';
+            }
+
+            function calculateWages() {
+                const baseWage = parseFloat(document.getElementById('baseWage').value);
+                const nightBonus = parseFloat(document.getElementById('nightBonus').value) / 100;
+                const weekendBonus = parseFloat(document.getElementById('weekendBonus').value) / 100;
+                const holidayBonus = parseFloat(document.getElementById('holidayBonus').value) / 100;
+                const continuousBonus = parseFloat(document.getElementById('continuousBonus').value) / 100;
+
+                const SHIFT_HOURS = 11.5;
+                const shifts = generateShifts('2025-01-04', currentShift);
+                const month = parseInt(document.getElementById('monthSelect').value);
+                const monthShifts = shifts.filter(s => s.date.getMonth() === month);
+
+                // Výpočet hodin podle typů směn
+                const regularShifts = monthShifts.filter(s => s.shift === 'R');
+                const nightShifts = monthShifts.filter(s => s.shift === 'N');
+
+                const weekendShifts = monthShifts.filter(s => {
+                    const day = s.date.getDay();
+                    return (day === 0 || day === 6) && s.shift !== '-';
+                });
+
+                const holidayShifts = monthShifts.filter(s => {
+                    const dateStr = `${s.date.getFullYear()}-${String(s.date.getMonth() + 1).padStart(2, '0')}-${String(s.date.getDate()).padStart(2, '0')}`;
+                    return HOLIDAYS.some(h => h.date === dateStr) && s.shift !== '-';
+                });
+
+                // Kalkulace hodin a mezd
+                const normalHours = regularShifts.length * SHIFT_HOURS;
+                const nightHours = nightShifts.length * SHIFT_HOURS;
+                const weekendHours = weekendShifts.length * SHIFT_HOURS;
+                const holidayHours = holidayShifts.length * SHIFT_HOURS;
+                const totalHours = (regularShifts.length + nightShifts.length) * SHIFT_HOURS;
+
+                const normalWage = baseWage * totalHours;
+                const nightWage = baseWage * nightBonus * nightHours;
+                const weekendWage = baseWage * weekendBonus * weekendHours;
+                const holidayWage = baseWage * holidayBonus * holidayHours;
+                const continuousWage = baseWage * continuousBonus * totalHours;
+
+                const totalWage = normalWage + nightWage + weekendWage + holidayWage + continuousWage;
+
+                // Výpočet čisté mzdy
+                const childCount = parseInt(document.getElementById('childCount').value);
+                const disability = parseInt(document.getElementById('disability').value);
+                const isStudent = document.getElementById('isStudent').checked;
+                const hasTaxDeclaration = document.getElementById('hasTaxDeclaration').checked;
+
+                // Konstanty pro rok 2025
+                const HEALTH_INSURANCE = 0.045; // 4.5% zdravotní pojištění
+                const SOCIAL_INSURANCE = 0.065; // 6.5% sociální pojištění
+                const TAX_RATE = 0.15; // 15% daň z příjmu
+                const TAX_DISCOUNT = 2570; // měsíční sleva na poplatníka
+                const CHILD_DISCOUNT = [1267, 1860, 2320]; // slevy na děti (1., 2., 3.+ dítě)
+                const DISABILITY_DISCOUNT = [210, 420]; // slevy na invaliditu
+                const STUDENT_DISCOUNT = 335; // sleva na studenta
+
+                // Výpočet pojištění
+                const healthInsurance = Math.round(totalWage * HEALTH_INSURANCE);
+                const socialInsurance = Math.round(totalWage * SOCIAL_INSURANCE);
+
+                // Superhrubá mzda (pro výpočet daně)
+                const taxBase = Math.round(totalWage);
+                let tax = Math.round(taxBase * TAX_RATE);
+
+                // Slevy na dani
+                let taxDiscount = hasTaxDeclaration ? TAX_DISCOUNT : 0;
+
+                // Sleva na invaliditu
+                if (disability > 0) {
+                    taxDiscount += DISABILITY_DISCOUNT[disability - 1];
+                }
+
+                // Sleva na studenta
+                if (isStudent) {
+                    taxDiscount += STUDENT_DISCOUNT;
+                }
+
+                // Aplikace základní slevy na dani
+                tax = Math.max(0, tax - taxDiscount);
+
+                // Daňové zvýhodnění na děti
+                let childDiscount = 0;
+                for (let i = 0; i < childCount; i++) {
+                    childDiscount += CHILD_DISCOUNT[Math.min(i, 2)];
+                }
+
+                tax = Math.max(0, tax - childDiscount);
+
+                // Čistá mzda
+                const netWage = totalWage - healthInsurance - socialInsurance - tax;
+
+                // Aktualizace výsledků
+                document.getElementById('wageResults').innerHTML = `
+                    <div class="wage-result-item">
+                        <strong>Odpracované hodiny:</strong>
+                        <span>${totalHours.toFixed(1)} hod</span>
+                        <small>(${Math.floor(totalHours)} hod ${Math.round((totalHours % 1) * 60)} min)</small>
+                    </div>
+                    <div class="wage-result-item">
+                        <strong>Základní mzda (${totalHours.toFixed(1)} hod):</strong>
+                        <span>${normalWage.toLocaleString()} Kč</span>
+                    </div>
+                    <div class="wage-result-item">
+                        <strong>Příplatek za noční (${nightHours.toFixed(1)} hod):</strong>
+                        <span>${nightWage.toLocaleString()} Kč</span>
+                    </div>
+                    <div class="wage-result-item">
+                        <strong>Příplatek za víkendy (${weekendHours.toFixed(1)} hod):</strong>
+                        <span>${weekendWage.toLocaleString()} Kč</span>
+                    </div>
+                    <div class="wage-result-item">
+                        <strong>Příplatek za svátky (${holidayHours.toFixed(1)} hod):</strong>
+                        <span>${holidayWage.toLocaleString()} Kč</span>
+                    </div>
+                    <div class="wage-result-item">
+                        <strong>Příplatek za nepřetržitý provoz (${totalHours.toFixed(1)} hod):</strong>
+                        <span>${continuousWage.toLocaleString()} Kč</span>
+                    </div>
+                    <div class="wage-result-item" style="font-weight: bold; font-size: 1.2em; border-top: 1px solid var(--border-color); margin-top: 10px; padding-top: 10px;">
+                        <strong>Celková hrubá mzda:</strong>
+                        <span>${totalWage.toLocaleString()} Kč</span>
+                    </div>
+                    <div class="wage-result-item" style="font-weight: bold; font-size: 1.2em; border-top: 1px solid var(--border-color); margin-top: 10px; padding-top: 10px;">
+                        <strong>Čistá mzda:</strong>
+                        <span>${netWage.toLocaleString()} Kč</span>
+                    </div>
+                `;
+            }
         </script>
-    </body>
+    </div>
+</body>
 </html>
