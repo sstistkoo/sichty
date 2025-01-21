@@ -53,6 +53,8 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
+            flex-wrap: wrap; /* Přidáno pro lepší mobilní zobrazení */
+            gap: 10px; /* Přidáno pro lepší mezery mezi prvky */
         }
 
         .theme-toggle {
@@ -301,8 +303,8 @@
         .action-buttons {
             display: flex;
             gap: 10px;
-            margin-top: 20px;
-            justify-content: center;
+            flex-wrap: wrap; /* Přidáno pro lepší mobilní zobrazení */
+            justify-content: center; /* Přidáno pro lepší mobilní zobrazení */
         }
 
         .action-btn {
@@ -429,6 +431,26 @@
                 font-size: 1.2em;
             }
         }
+
+        @media (max-width: 768px) {
+            .main-content {
+                margin-top: 120px; /* Zvětšení horního marginu pro mobilní zobrazení */
+            }
+
+            .top-controls {
+                height: auto; /* Automatická výška pro mobilní zobrazení */
+                padding: 10px 5px; /* Menší padding na mobilech */
+            }
+
+            .action-buttons {
+                width: 100%; /* Plná šířka na mobilech */
+            }
+
+            .action-btn {
+                font-size: 0.9em; /* Menší písmo na mobilech */
+                padding: 6px 12px; /* Menší padding na mobilech */
+            }
+        }
     </style>
 </head>
 <body>
@@ -528,15 +550,11 @@
                         </div>
                         <div class="input-field">
                             <label>Příplatek za víkend (%)</label>
-                            <input type="number" id="weekendBonus" value="10" min="0" step="1">
+                            <input type="number" id="weekendBonus" value="25" min="0" step="1" readonly>
                         </div>
                         <div class="input-field">
                             <label>Příplatek za svátek (%)</label>
                             <input type="number" id="holidayBonus" value="100" min="0" step="1">
-                        </div>
-                        <div class="input-field">
-                            <label>Příplatek za nepřetržitý provoz (%)</label>
-                            <input type="number" id="continuousBonus" value="7" min="0" step="1">
                         </div>
                         <div class="input-field">
                             <label>Počet dětí</label>
@@ -643,16 +661,34 @@
                     if (shift.shift !== '-') {
                         const dateStr = shift.date.toISOString().split('T')[0].replace(/-/g, '');
                         const summary = shift.shift === 'R' ? 'Ranní směna' : 'Noční směna';
-                        const startTime = shift.shift === 'R' ? '060000' : '220000';
-                        const endTime = shift.shift === 'R' ? '140000' : '060000';
 
-                        icsContent = icsContent.concat([
-                            'BEGIN:VEVENT',
-                            `DTSTART;VALUE=DATE-TIME:${dateStr}T${startTime}`,
-                            `DTEND;VALUE=DATE-TIME:${dateStr}T${endTime}`,
-                            `SUMMARY:${summary}`,
-                            'END:VEVENT'
-                        ]);
+                        if (shift.shift === 'R') {
+                            // Ranní směna 6:00 - 18:00
+                            const startTime = '060000';
+                            const endTime = '180000';
+
+                            icsContent = icsContent.concat([
+                                'BEGIN:VEVENT',
+                                `DTSTART;VALUE=DATE-TIME:${dateStr}T${startTime}`,
+                                `DTEND;VALUE=DATE-TIME:${dateStr}T${endTime}`,
+                                `SUMMARY:${summary}`,
+                                'END:VEVENT'
+                            ]);
+                        } else {
+                            // Noční směna 18:00 - 06:00 následující den
+                            const startTime = '180000';
+                            const nextDay = new Date(shift.date);
+                            nextDay.setDate(nextDay.getDate() + 1);
+                            const nextDayStr = nextDay.toISOString().split('T')[0].replace(/-/g, '');
+
+                            icsContent = icsContent.concat([
+                                'BEGIN:VEVENT',
+                                `DTSTART;VALUE=DATE-TIME:${dateStr}T${startTime}`,
+                                `DTEND;VALUE=DATE-TIME:${nextDayStr}T060000`,
+                                `SUMMARY:${summary}`,
+                                'END:VEVENT'
+                            ]);
+                        }
                     }
                 });
 
@@ -1148,7 +1184,6 @@
                 const nightBonus = parseFloat(document.getElementById('nightBonus').value) / 100;
                 const weekendBonus = parseFloat(document.getElementById('weekendBonus').value) / 100;
                 const holidayBonus = parseFloat(document.getElementById('holidayBonus').value) / 100;
-                const continuousBonus = parseFloat(document.getElementById('continuousBonus').value) / 100;
 
                 const SHIFT_HOURS = 11.5;
                 const shifts = generateShifts('2025-01-04', currentShift);
@@ -1180,9 +1215,8 @@
                 const nightWage = baseWage * nightBonus * nightHours;
                 const weekendWage = baseWage * weekendBonus * weekendHours;
                 const holidayWage = baseWage * holidayBonus * holidayHours;
-                const continuousWage = baseWage * continuousBonus * totalHours;
 
-                const totalWage = normalWage + nightWage + weekendWage + holidayWage + continuousWage;
+                const totalWage = normalWage + nightWage + weekendWage + holidayWage;
 
                 // Výpočet čisté mzdy
                 const childCount = parseInt(document.getElementById('childCount').value);
@@ -1256,10 +1290,6 @@
                     <div class="wage-result-item">
                         <strong>Příplatek za svátky (${holidayHours.toFixed(1)} hod):</strong>
                         <span>${holidayWage.toLocaleString()} Kč</span>
-                    </div>
-                    <div class="wage-result-item">
-                        <strong>Příplatek za nepřetržitý provoz (${totalHours.toFixed(1)} hod):</strong>
-                        <span>${continuousWage.toLocaleString()} Kč</span>
                     </div>
                     <div class="wage-result-item" style="font-weight: bold; font-size: 1.2em; border-top: 1px solid var(--border-color); margin-top: 10px; padding-top: 10px;">
                         <strong>Celková hrubá mzda:</strong>
