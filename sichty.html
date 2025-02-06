@@ -461,7 +461,7 @@
             content: "P";
             position: absolute;
             top: 2px;
-            right: 2px;
+            right: 5px;
             font-size: 0.8em;
             color: var(--primary-color);
             font-weight: bold;
@@ -472,6 +472,15 @@
         }
         .overtime-N::after {
             content: "PN";
+        }
+
+        .overtime-hours {
+            position: absolute;
+            top: 2px;
+            left: 5px;
+            font-size: 0.8em;
+            color: var(--primary-color);
+            font-weight: bold;
         }
     </style>
 </head>
@@ -1059,8 +1068,14 @@
                     // Apply saved overtime status
                     const dateStr = currentDate.toISOString().split('T')[0];
                     if (overtimeDays.has(dateStr)) {
-                        const type = overtimeDays.get(dateStr).type;
-                        dayDiv.classList.add('overtime', `overtime-${type}`);
+                        const overtimeData = overtimeDays.get(dateStr);
+                        dayDiv.classList.add('overtime', `overtime-${overtimeData.type}`);
+
+                        // Přidat zobrazení hodin
+                        const hoursDiv = document.createElement('div');
+                        hoursDiv.className = 'overtime-hours';
+                        hoursDiv.textContent = `${overtimeData.hours}h`;
+                        dayDiv.appendChild(hoursDiv);
                     }
 
                     daysDiv.appendChild(dayDiv);
@@ -1290,6 +1305,7 @@
                 document.getElementById('wageCalculatorModal').style.display = 'none';
             }
 
+            // Upravit funkci calculateWages() - změnit výpočet příplatků
             function calculateWages() {
                 const baseWage = parseFloat(document.getElementById('baseWage').value);
                 const nightBonus = parseFloat(document.getElementById('nightBonus').value) / 100;
@@ -1345,14 +1361,31 @@
                 const overtimeNHours = overtimeNData.reduce((sum, [_, data]) => sum + data.hours, 0);
                 const totalOvertimeHours = overtimeRHours + overtimeNHours;
 
+                // Přidat kontrolu víkendů a svátků pro přesčasy
+                const weekendOvertimeHours = Array.from(overtimeDays.entries())
+                    .filter(([date, data]) => {
+                        const shiftDate = new Date(date);
+                        return shiftDate.getMonth() === month &&
+                               (shiftDate.getDay() === 0 || shiftDate.getDay() === 6);
+                    })
+                    .reduce((sum, [_, data]) => sum + data.hours, 0);
+
+                const holidayOvertimeHours = Array.from(overtimeDays.entries())
+                    .filter(([date, data]) => {
+                        const dateStr = date.split('T')[0];
+                        return new Date(date).getMonth() === month &&
+                               HOLIDAYS.some(h => h.date === dateStr);
+                    })
+                    .reduce((sum, [_, data]) => sum + data.hours, 0);
+
                 // Add overtime hours to regular hours
                 const totalHoursWithOvertime = totalHours + totalOvertimeHours;
 
                 // Calculate wages including overtime
                 const normalWageWithOvertime = baseWage * totalHoursWithOvertime;
                 const nightWageWithOvertime = baseWage * nightBonus * (nightHours + overtimeNHours);
-                const weekendWageWithOvertime = baseWage * weekendBonus * weekendHours;
-                const holidayWageWithOvertime = baseWage * holidayBonus * holidayHours;
+                const weekendWageWithOvertime = baseWage * weekendBonus * (weekendHours + weekendOvertimeHours);
+                const holidayWageWithOvertime = baseWage * holidayBonus * (holidayHours + holidayOvertimeHours);
 
                 // Calculate overtime bonus separately
                 const overtimeBonusWage = baseWage * overtimeBonus * totalOvertimeHours;
@@ -1423,14 +1456,17 @@
                     <div class="wage-result-item">
                         <strong>Příplatek za noční (${(nightHours + overtimeNHours).toFixed(1)} hod):</strong>
                         <span>${nightWageWithOvertime.toLocaleString()} Kč</span>
+                        ${overtimeNHours > 0 ? `<small>(včetně ${overtimeNHours.toFixed(1)} hod přesčas)</small>` : ''}
                     </div>
                     <div class="wage-result-item">
-                        <strong>Příplatek za víkendy (${weekendHours.toFixed(1)} hod):</strong>
+                        <strong>Příplatek za víkendy (${(weekendHours + weekendOvertimeHours).toFixed(1)} hod):</strong>
                         <span>${weekendWageWithOvertime.toLocaleString()} Kč</span>
+                        ${weekendOvertimeHours > 0 ? `<small>(včetně ${weekendOvertimeHours.toFixed(1)} hod přesčas)</small>` : ''}
                     </div>
                     <div class="wage-result-item">
-                        <strong>Příplatek za svátky (${holidayHours.toFixed(1)} hod):</strong>
+                        <strong>Příplatek za svátky (${(holidayHours + holidayOvertimeHours).toFixed(1)} hod):</strong>
                         <span>${holidayWageWithOvertime.toLocaleString()} Kč</span>
+                        ${holidayOvertimeHours > 0 ? `<small>(včetně ${holidayOvertimeHours.toFixed(1)} hod přesčas)</small>` : ''}
                     </div>
                     <div class="wage-result-item">
                         <strong>Příplatek za přesčas (${totalOvertimeHours.toFixed(1)} hod):</strong>
