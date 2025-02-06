@@ -451,6 +451,28 @@
                 padding: 6px 12px; /* Menší padding na mobilech */
             }
         }
+
+        /* Add new overtime styles */
+        .overtime {
+            border: 2px dashed var(--primary-color) !important;
+        }
+
+        .overtime::after {
+            content: "P";
+            position: absolute;
+            top: 2px;
+            right: 2px;
+            font-size: 0.8em;
+            color: var(--primary-color);
+            font-weight: bold;
+        }
+
+        .overtime-R::after {
+            content: "PR";
+        }
+        .overtime-N::after {
+            content: "PN";
+        }
     </style>
 </head>
 <body>
@@ -576,6 +598,10 @@
                             <label>Podepsané prohlášení k dani</label>
                             <input type="checkbox" id="hasTaxDeclaration" checked>
                         </div>
+                        <div class="input-field">
+                            <label>Příplatek za přesčas (%)</label>
+                            <input type="number" id="overtimeBonus" value="25" min="0" step="1">
+                        </div>
                     </div>
 
                     <div class="shift-summary" style="margin-top: 20px; padding: 15px; background: var(--background-color); border-radius: 4px;">
@@ -597,6 +623,14 @@
                                 <strong>Sváteční směny:</strong>
                                 <span id="holidayShiftCount">0</span>
                             </div>
+                            <div>
+                                <strong>Přesčasové ranní:</strong>
+                                <span id="overtimeRCount">0</span>
+                            </div>
+                            <div>
+                                <strong>Přesčasové noční:</strong>
+                                <span id="overtimeNCount">0</span>
+                            </div>
                         </div>
                     </div>
 
@@ -613,12 +647,34 @@
             </div>
         </div>
 
+        <!-- Přidat nové modální okno pro výběr typu přesčasu před koncem body -->
+        <div id="overtimeTypeModal" class="modal">
+            <div class="modal-content" style="max-width: 300px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <h2>Vyberte typ přesčasu</h2>
+                    <button class="action-btn secondary" onclick="closeOvertimeTypeModal()" style="padding: 5px 10px;">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="input-field" style="margin-bottom: 15px;">
+                    <label>Počet hodin:</label>
+                    <input type="number" id="overtimeHours" value="11.5" min="0" step="0.5" style="width: 100%;">
+                </div>
+                <div style="display: flex; gap: 10px; justify-content: center;">
+                    <button class="action-btn" onclick="selectOvertimeType('R')">Ranní</button>
+                    <button class="action-btn" onclick="selectOvertimeType('N')">Noční</button>
+                    <button class="action-btn secondary" onclick="removeOvertime()">Odznačit</button>
+                </div>
+            </div>
+        </div>
+
         <script>
             let currentShift = 'A';
             let darkMode = false;
             let notes = {};
             let notificationsEnabled = false;
             let yearView = false;
+            let overtimeDays = new Map(); // Changed from Set to Map to store {type, hours}
 
             // Seznam státních svátků
             const HOLIDAYS = [
@@ -835,6 +891,18 @@
                     return HOLIDAYS.some(h => h.date === dateStr) && s.shift !== '-';
                 }).length;
 
+                const overtimeR = Array.from(overtimeDays.entries())
+                    .filter(([date, data]) => {
+                        const shiftDate = new Date(date);
+                        return (!month || shiftDate.getMonth() === month) && data.type === 'R';
+                    }).length;
+
+                const overtimeN = Array.from(overtimeDays.entries())
+                    .filter(([date, data]) => {
+                        const shiftDate = new Date(date);
+                        return (!month || shiftDate.getMonth() === month) && data.type === 'N';
+                    }).length;
+
                 stats.innerHTML = `
                     <div class="stat-item">
                         <h3>Ranní směny</h3>
@@ -851,6 +919,14 @@
                     <div class="stat-item">
                         <h3>Směny o svátcích</h3>
                         <p>${holidayShifts}</p>
+                    </div>
+                    <div class="stat-item">
+                        <h3>Přesčasové ranní</h3>
+                        <p>${overtimeR}</p>
+                    </div>
+                    <div class="stat-item">
+                        <h3>Přesčasové noční</h3>
+                        <p>${overtimeN}</p>
                     </div>
                 `;
             }
@@ -945,8 +1021,8 @@
                         dayDiv.appendChild(shiftSpan);
                     }
 
-                    const dateStr = currentDate.toLocaleDateString('cs-CZ');
-                    if (notes[dateStr]) {
+                    const noteDateStr = currentDate.toLocaleDateString('cs-CZ'); // Přejmenováno z dateStr
+                    if (notes[noteDateStr]) {
                         const noteIcon = document.createElement('div');
                         noteIcon.className = 'note-icon';
                         noteIcon.innerHTML = '<i class="fas fa-sticky-note"></i>';
@@ -954,11 +1030,38 @@
 
                         const tooltip = document.createElement('div');
                         tooltip.className = 'tooltip';
-                        tooltip.textContent = notes[dateStr];
+                        tooltip.textContent = notes[noteDateStr];
                         dayDiv.appendChild(tooltip);
                     }
 
                     dayDiv.addEventListener('dblclick', () => openNoteModal(currentDate));
+
+                    dayDiv.addEventListener('click', (e) => {
+                        if (e.ctrlKey || e.metaKey || e.target.classList.contains('overtime-toggle')) {
+                            showOvertimeTypeModal(currentDate);
+                        }
+                    });
+
+                    // Add mobile-friendly overtime toggle
+                    const overtimeToggle = document.createElement('button');
+                    overtimeToggle.className = 'overtime-toggle';
+                    overtimeToggle.innerHTML = '⏱️';
+                    overtimeToggle.style.position = 'absolute';
+                    overtimeToggle.style.bottom = '2px';
+                    overtimeToggle.style.right = '2px';
+                    overtimeToggle.style.border = 'none';
+                    overtimeToggle.style.background = 'transparent';
+                    overtimeToggle.style.fontSize = '12px';
+                    overtimeToggle.style.padding = '2px';
+                    overtimeToggle.style.cursor = 'pointer';
+                    dayDiv.appendChild(overtimeToggle);
+
+                    // Apply saved overtime status
+                    const dateStr = currentDate.toISOString().split('T')[0];
+                    if (overtimeDays.has(dateStr)) {
+                        const type = overtimeDays.get(dateStr).type;
+                        dayDiv.classList.add('overtime', `overtime-${type}`);
+                    }
 
                     daysDiv.appendChild(dayDiv);
                 }
@@ -1078,6 +1181,7 @@
 
             // Inicializace kalendáře
             function initCalendar() {
+                loadOvertimeData();
                 const today = new Date();
                 document.getElementById('monthSelect').value = today.getMonth();
                 const yearShifts = generateShifts('2025-01-04', currentShift);
@@ -1169,6 +1273,13 @@
                 document.getElementById('weekendShiftCount').textContent = weekendShifts;
                 document.getElementById('holidayShiftCount').textContent = holidayShifts;
 
+                // Add overtime shifts to summary
+                const overtimeR = Array.from(overtimeDays.entries()).filter(([_, data]) => data.type === 'R').length;
+                const overtimeN = Array.from(overtimeDays.entries()).filter(([_, data]) => data.type === 'N').length;
+
+                document.getElementById('overtimeRCount').textContent = overtimeR;
+                document.getElementById('overtimeNCount').textContent = overtimeN;
+
                 document.getElementById('wageCalculatorModal').style.display = 'flex';
 
                 // Automaticky spustit výpočet při otevření
@@ -1184,6 +1295,7 @@
                 const nightBonus = parseFloat(document.getElementById('nightBonus').value) / 100;
                 const weekendBonus = parseFloat(document.getElementById('weekendBonus').value) / 100;
                 const holidayBonus = parseFloat(document.getElementById('holidayBonus').value) / 100;
+                const overtimeBonus = parseFloat(document.getElementById('overtimeBonus').value) / 100;
 
                 const SHIFT_HOURS = 11.5;
                 const shifts = generateShifts('2025-01-04', currentShift);
@@ -1216,7 +1328,36 @@
                 const weekendWage = baseWage * weekendBonus * weekendHours;
                 const holidayWage = baseWage * holidayBonus * holidayHours;
 
-                const totalWage = normalWage + nightWage + weekendWage + holidayWage;
+                // Calculate overtime hours by type
+                const overtimeRData = Array.from(overtimeDays.entries())
+                    .filter(([date, data]) => {
+                        const shiftDate = new Date(date);
+                        return shiftDate.getMonth() === month && data.type === 'R';
+                    });
+
+                const overtimeNData = Array.from(overtimeDays.entries())
+                    .filter(([date, data]) => {
+                        const shiftDate = new Date(date);
+                        return shiftDate.getMonth() === month && data.type === 'N';
+                    });
+
+                const overtimeRHours = overtimeRData.reduce((sum, [_, data]) => sum + data.hours, 0);
+                const overtimeNHours = overtimeNData.reduce((sum, [_, data]) => sum + data.hours, 0);
+                const totalOvertimeHours = overtimeRHours + overtimeNHours;
+
+                // Add overtime hours to regular hours
+                const totalHoursWithOvertime = totalHours + totalOvertimeHours;
+
+                // Calculate wages including overtime
+                const normalWageWithOvertime = baseWage * totalHoursWithOvertime;
+                const nightWageWithOvertime = baseWage * nightBonus * (nightHours + overtimeNHours);
+                const weekendWageWithOvertime = baseWage * weekendBonus * weekendHours;
+                const holidayWageWithOvertime = baseWage * holidayBonus * holidayHours;
+
+                // Calculate overtime bonus separately
+                const overtimeBonusWage = baseWage * overtimeBonus * totalOvertimeHours;
+
+                const totalWage = normalWageWithOvertime + nightWageWithOvertime + weekendWageWithOvertime + holidayWageWithOvertime + overtimeBonusWage;
 
                 // Výpočet čisté mzdy
                 const childCount = parseInt(document.getElementById('childCount').value);
@@ -1272,24 +1413,28 @@
                 document.getElementById('wageResults').innerHTML = `
                     <div class="wage-result-item">
                         <strong>Odpracované hodiny:</strong>
-                        <span>${totalHours.toFixed(1)} hod</span>
-                        <small>(${Math.floor(totalHours)} hod ${Math.round((totalHours % 1) * 60)} min)</small>
+                        <span>${totalHoursWithOvertime.toFixed(1)} hod</span>
+                        <small>(${Math.floor(totalHoursWithOvertime)} hod ${Math.round((totalHoursWithOvertime % 1) * 60)} min)</small>
                     </div>
                     <div class="wage-result-item">
-                        <strong>Základní mzda (${totalHours.toFixed(1)} hod):</strong>
-                        <span>${normalWage.toLocaleString()} Kč</span>
+                        <strong>Základní mzda (${totalHoursWithOvertime.toFixed(1)} hod):</strong>
+                        <span>${normalWageWithOvertime.toLocaleString()} Kč</span>
                     </div>
                     <div class="wage-result-item">
-                        <strong>Příplatek za noční (${nightHours.toFixed(1)} hod):</strong>
-                        <span>${nightWage.toLocaleString()} Kč</span>
+                        <strong>Příplatek za noční (${(nightHours + overtimeNHours).toFixed(1)} hod):</strong>
+                        <span>${nightWageWithOvertime.toLocaleString()} Kč</span>
                     </div>
                     <div class="wage-result-item">
                         <strong>Příplatek za víkendy (${weekendHours.toFixed(1)} hod):</strong>
-                        <span>${weekendWage.toLocaleString()} Kč</span>
+                        <span>${weekendWageWithOvertime.toLocaleString()} Kč</span>
                     </div>
                     <div class="wage-result-item">
                         <strong>Příplatek za svátky (${holidayHours.toFixed(1)} hod):</strong>
-                        <span>${holidayWage.toLocaleString()} Kč</span>
+                        <span>${holidayWageWithOvertime.toLocaleString()} Kč</span>
+                    </div>
+                    <div class="wage-result-item">
+                        <strong>Příplatek za přesčas (${totalOvertimeHours.toFixed(1)} hod):</strong>
+                        <span>${overtimeBonusWage.toLocaleString()} Kč</span>
                     </div>
                     <div class="wage-result-item" style="font-weight: bold; font-size: 1.2em; border-top: 1px solid var(--border-color); margin-top: 10px; padding-top: 10px;">
                         <strong>Celková hrubá mzda:</strong>
@@ -1301,6 +1446,76 @@
                     </div>
                 `;
             }
+
+            // Add load/save functions for overtime data
+            function saveOvertimeData() {
+                localStorage.setItem('overtimeDays', JSON.stringify([...overtimeDays]));
+            }
+
+            function loadOvertimeData() {
+                const saved = localStorage.getItem('overtimeDays');
+                if (saved) {
+                    overtimeDays = new Map(JSON.parse(saved));
+                }
+            }
+
+            // Přidat nové funkce pro modální okno přesčasů
+            let selectedDate = null; // Přidat novou proměnnou pro vybraný datum
+
+            function showOvertimeTypeModal(date) {
+                selectedDate = date;
+                const dateStr = date.toISOString().split('T')[0];
+                if (overtimeDays.has(dateStr)) {
+                    const data = overtimeDays.get(dateStr);
+                    document.getElementById('overtimeHours').value = data.hours;
+                } else {
+                    document.getElementById('overtimeHours').value = "11.5";
+                }
+                document.getElementById('overtimeTypeModal').style.display = 'flex';
+            }
+
+            function selectOvertimeType(type) {
+                if (selectedDate) {
+                    const dateStr = selectedDate.toISOString().split('T')[0];
+                    const hours = parseFloat(document.getElementById('overtimeHours').value);
+                    overtimeDays.set(dateStr, { type, hours });
+                    saveOvertimeData();
+                    refreshCalendar();
+                }
+                closeOvertimeTypeModal();
+            }
+
+            function removeOvertime() {
+                if (selectedDate) {
+                    const dateStr = selectedDate.toISOString().split('T')[0];
+                    overtimeDays.delete(dateStr);
+                    saveOvertimeData();
+                    refreshCalendar();
+                }
+                closeOvertimeTypeModal();
+            }
+
+            function refreshCalendar() {
+                const yearShifts = generateShifts('2025-01-04', currentShift);
+                createCalendar(yearShifts, selectedDate.getMonth());
+                if (document.getElementById('wageCalculatorModal').style.display === 'flex') {
+                    calculateWages();
+                }
+            }
+
+            // Přidat mezi ostatní funkce pro modální okno přesčasů
+            function closeOvertimeTypeModal() {
+                document.getElementById('overtimeTypeModal').style.display = 'none';
+                selectedDate = null;
+            }
+
+        </script>
+        <script>
+            // Po načtení dokumentu přidat event listener
+            document.addEventListener('DOMContentLoaded', function() {
+                document.querySelector('[onclick="showWageCalculator()"]')
+                    .addEventListener('click', showWageCalculator);
+            });
         </script>
     </div>
 </body>
