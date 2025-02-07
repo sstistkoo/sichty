@@ -840,6 +840,7 @@
                 const holidayBonus = parseFloat(document.getElementById('holidayBonus').value) / 100;
                 const overtimeBonus = parseFloat(document.getElementById('overtimeBonus').value) / 100;
                 const SHIFT_HOURS = 11.5;
+                const NIGHT_BONUS_HOURS = 7.5; // Noční příplatek pouze za hodiny 22:00-6:00 mínus přestávka
 
                 const month = parseInt(document.getElementById('monthSelect').value);
                 const shifts = generateShifts('2025-01-04', currentShift);
@@ -896,7 +897,12 @@
 
                 // Výpočet mezd
                 const normalWageWithOvertime = baseWage * totalHoursWithOvertime;
-                const nightWageWithOvertime = baseWage * nightBonus * (nightHours + overtimeNHours);
+                const nightWageWithOvertime = baseWage * nightBonus * (
+                    // Běžné noční směny - pouze hodiny s příplatkem
+                    nightShifts.length * NIGHT_BONUS_HOURS +
+                    // Přesčasové noční - také pouze hodiny s příplatkem
+                    overtimeNHours * (NIGHT_BONUS_HOURS / SHIFT_HOURS)
+                );
                 const weekendWageWithOvertime = baseWage * weekendBonus * (weekendHours + weekendOvertimeHours);
                 const holidayWageWithOvertime = baseWage * holidayBonus * (holidayHours + holidayOvertimeHours);
                 const overtimeBonusWage = baseWage * overtimeBonus * totalOvertimeHours;
@@ -1326,6 +1332,12 @@
                 }
             }
 
+/*************  ✨ Codeium Command ⭐  *************/
+            /**
+             * Increase the month in the month select by one and update the calendar accordingly.
+             * Does nothing if the current month is already December.
+             */
+/******  af7bc0e2-6afb-4fbc-b518-cc262370161c  *******/
             function nextMonth() {
                 const select = document.getElementById('monthSelect');
                 let currentMonth = parseInt(select.value);
@@ -1527,6 +1539,7 @@
                 const holidayBonus = parseFloat(document.getElementById('holidayBonus').value) / 100;
                 const overtimeBonus = parseFloat(document.getElementById('overtimeBonus').value) / 100;
                 const SHIFT_HOURS = 11.5;
+                const NIGHT_BONUS_HOURS = 7.5; // Noční příplatek pouze za hodiny 22:00-6:00 mínus přestávka
 
                 // Získání směn pro aktuální měsíc
                 const month = parseInt(document.getElementById('monthSelect').value);
@@ -1585,7 +1598,12 @@
 
                 // Výpočet mezd
                 const normalWageWithOvertime = baseWage * totalHoursWithOvertime;
-                const nightWageWithOvertime = baseWage * nightBonus * (nightHours + overtimeNHours);
+                const nightWageWithOvertime = baseWage * nightBonus * (
+                    // Běžné noční směny - pouze hodiny s příplatkem
+                    nightShifts.length * NIGHT_BONUS_HOURS +
+                    // Přesčasové noční - také pouze hodiny s příplatkem
+                    overtimeNHours * (NIGHT_BONUS_HOURS / SHIFT_HOURS)
+                );
                 const weekendWageWithOvertime = baseWage * weekendBonus * (weekendHours + weekendOvertimeHours);
                 const holidayWageWithOvertime = baseWage * holidayBonus * (holidayHours + holidayOvertimeHours);
                 const overtimeBonusWage = baseWage * overtimeBonus * totalOvertimeHours;
@@ -1638,9 +1656,13 @@
                         <span>${normalWageWithOvertime.toLocaleString()} Kč</span>
                     </div>
                     <div class="wage-result-item">
-                        <strong>Příplatek za noční (${(nightHours + overtimeNHours).toFixed(1)} hod):</strong>
+                        <strong>Příplatek za noční (${(nightHours * (NIGHT_BONUS_HOURS / SHIFT_HOURS) + overtimeNHours * (NIGHT_BONUS_HOURS / SHIFT_HOURS)).toFixed(1)} hod):</strong>
                         <span>${nightWageWithOvertime.toLocaleString()} Kč</span>
-                        ${overtimeNHours > 0 ? `<small>(včetně ${overtimeNHours.toFixed(1)} hod přesčas)</small>` : ''}
+                        ${overtimeNHours > 0 ?
+                            `<small>(včetně ${(overtimeNHours * (NIGHT_BONUS_HOURS / SHIFT_HOURS)).toFixed(1)} hod přesčas)</small>` :
+                            ''
+                        }
+                        <small>Počítáno pouze za hodiny mezi 22:00-6:00</small>
                     </div>
                     <div class="wage-result-item">
                         <strong>Příplatek za víkendy So+Ne (${(weekendHours + weekendOvertimeHours).toFixed(1)} hod):</strong>
@@ -1850,3 +1872,4 @@
     </div>
 </body>
 </html>
+
