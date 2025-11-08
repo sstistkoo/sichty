@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Progres směny 2025 - Vylepšená verze</title>
+    <title>Progres směny - Vylepšená verze</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
         :root {
@@ -79,14 +79,16 @@
             display: flex;
             flex-wrap: wrap;
             justify-content: center;
-            gap: 20px;
+            gap: 10px; /* Sníženo pro více prvků */
             margin-bottom: 20px;
+            align-items: center;
         }
 
         @media (max-width: 768px) {
             .controls {
                 flex-direction: column;
                 align-items: center;
+                gap: 15px;
             }
 
             .shift-select {
@@ -99,7 +101,8 @@
             padding: 8px;
             font-size: 1em;
             border-radius: 4px;
-            width: 120px;
+            width: auto; /* Změněno na auto */
+            min-width: 100px;
             text-align: center;
             background-color: var(--card-background);
             color: var(--text-color);
@@ -509,9 +512,15 @@
     </div>
 
     <div class="main-content">
-        <h1 style="text-align: center;">Progres směny 2025</h1>
+        <h1 style="text-align: center;">Progres směny</h1>
 
         <div class="controls">
+            <!-- Ovládání roku -->
+            <button class="nav-btn" onclick="previousYear()">«</button>
+            <select id="yearSelect" class="month-select"></select>
+            <button class="nav-btn" onclick="nextYear()">»</button>
+            
+            <!-- Ovládání měsíce -->
             <button class="nav-btn" onclick="previousMonth()">←</button>
             <select id="monthSelect" class="month-select">
                 <option value="0">Leden</option>
@@ -529,6 +538,7 @@
             </select>
             <button class="nav-btn" onclick="nextMonth()">→</button>
 
+            <!-- Volba směny -->
             <div class="shift-select">
                 <button class="shift-btn active" data-shift="A">Směna A</button>
                 <button class="shift-btn" data-shift="B">Směna B</button>
@@ -558,13 +568,25 @@
             </div>
         </div>
 
+        <!-- Modální okno pro potvrzení -->
+        <div id="confirmModal" class="modal">
+            <div class="modal-content" style="max-width: 300px;">
+                <h2 id="confirmTitle">Potvrzení</h2>
+                <p id="confirmText" style="margin-top: 15px; margin-bottom: 20px;"></p>
+                <div class="action-buttons">
+                    <button class="action-btn" id="confirmYes">Ano</button>
+                    <button class="action-btn secondary" id="confirmNo">Ne</button>
+                </div>
+            </div>
+        </div>
+
         <div id="notification" class="notification"></div>
 
         <!-- Přidání modálního okna pro mzdovou kalkulačku -->
         <div id="wageCalculatorModal" class="modal">
             <div class="modal-content" style="max-width: 800px; max-height: 90vh; overflow-y: auto;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                    <h2>Mzdová kalkulačka - <span id="selectedMonthName"></span></h2>
+                    <h2>Mzdová kalkulačka - <span id="selectedMonthName"></span> <span id="selectedYearName"></span></h2>
                     <button class="action-btn secondary" onclick="closeWageCalculator()" style="margin: 0;">
                         <i class="fas fa-times"></i>
                     </button>
@@ -705,7 +727,6 @@
             let darkMode = false;
             let notes = {};
             let yearView = false;
-            // Odstranit notificationsEnabled a přidat overtimeDays jako objekt s mapami
             let overtimeDays = {
                 'A': new Map(),
                 'B': new Map(),
@@ -713,22 +734,85 @@
                 'D': new Map()
             };
 
-            // Seznam státních svátků
-            const HOLIDAYS = [
-                { date: '2025-01-01', name: 'Nový rok' },
-                { date: '2025-04-18', name: 'Velký pátek' },
-                { date: '2025-04-21', name: 'Velikonoční pondělí' },
-                { date: '2025-05-01', name: 'Svátek práce' },
-                { date: '2025-05-08', name: 'Den vítězství' },
-                { date: '2025-07-05', name: 'Cyril a Metoděj' },
-                { date: '2025-07-06', name: 'Jan Hus' },
-                { date: '2025-09-28', name: 'Sv. Václav' },
-                { date: '2025-10-28', name: 'Den vzniku ČSR' },
-                { date: '2025-11-17', name: 'Den boje za svobodu' },
-                { date: '2025-12-24', name: 'Štědrý den' },
-                { date: '2025-12-25', name: '1. svátek vánoční' },
-                { date: '2025-12-26', name: '2. svátek vánoční' }
-            ];
+            // Nové globální proměnné pro datum
+            let currentYear = new Date().getFullYear();
+            let currentMonth = new Date().getMonth();
+            
+            // Seznam státních svátků bude generován dynamicky
+            let HOLIDAYS = [];
+
+            // Referenční bod pro výpočet cyklu směn
+            const SHIFT_CYCLE_REFERENCE_DATE = new Date('2025-01-01'); // Středa
+            // 1.1.2025 je pro směnu A první noční (N1), což je 9. den cyklu (R1-3, V1-3, N1-3, V4-6)
+            // Cyklus: 0,1,2 = R; 3,4,5 = -; 6,7,8 = N; 9,10,11 = -
+            // Chyba v logice, 1.1.2025 je pro A=N, ale podle starého kódu (start 4.1. A=R)
+            // 4.1.2025 (So) -> A=R (day 0)
+            // 3.1.2025 (Pá) -> A=V (day 11)
+            // 2.1.2025 (Čt) -> A=V (day 10)
+            // 1.1.2025 (St) -> A=V (day 9)
+            // Upravíme referenci: 4.1.2025 je den 0 pro cyklus A
+            const SHIFT_CYCLE_REFERENCE_DATE_A = new Date('2025-01-04');
+            const SHIFT_CYCLE_A_OFFSET = 0; // 4.1.2025 je den 0 (R1)
+
+
+            // --- NOVÉ FUNKCE PRO VÝPOČET DATA ---
+
+            /**
+             * Vypočítá datum Velikonoční neděle pro daný rok
+             * (Meeus/Jones/Newcomb algorithm)
+             */
+            function getEaster(year) {
+                const a = year % 19;
+                const b = Math.floor(year / 100);
+                const c = year % 100;
+                const d = Math.floor(b / 4);
+                const e = b % 4;
+                const f = Math.floor((b + 8) / 25);
+                const g = Math.floor((b - f + 1) / 3);
+                const h = (19 * a + b - d - g + 15) % 30;
+                const i = Math.floor(c / 4);
+                const k = c % 4;
+                const l = (32 + 2 * e + 2 * i - h - k) % 7;
+                const m = Math.floor((a + 11 * h + 22 * l) / 451);
+                const month = Math.floor((h + l - 7 * m + 114) / 31);
+                const day = ((h + l - 7 * m + 114) % 31) + 1;
+                return new Date(year, month - 1, day);
+            }
+
+            /**
+             * Vrátí pole státních svátků pro daný rok
+             */
+            function getHolidays(year) {
+                const easterSunday = getEaster(year);
+                
+                const goodFriday = new Date(easterSunday);
+                goodFriday.setDate(easterSunday.getDate() - 2);
+
+                const easterMonday = new Date(easterSunday);
+                easterMonday.setDate(easterSunday.getDate() + 1);
+
+                const holidays = [
+                    { date: `${year}-01-01`, name: 'Nový rok' },
+                    { date: `${year}-05-01`, name: 'Svátek práce' },
+                    { date: `${year}-05-08`, name: 'Den vítězství' },
+                    { date: `${year}-07-05`, name: 'Cyril a Metoděj' },
+                    { date: `${year}-07-06`, name: 'Jan Hus' },
+                    { date: `${year}-09-28`, name: 'Sv. Václav' },
+                    { date: `${year}-10-28`, name: 'Den vzniku ČSR' },
+                    { date: `${year}-11-17`, name: 'Den boje za svobodu' },
+                    { date: `${year}-12-24`, name: 'Štědrý den' },
+                    { date: `${year}-12-25`, name: '1. svátek vánoční' },
+                    { date: `${year}-12-26`, name: '2. svátek vánoční' },
+                    // Pohyblivé svátky
+                    { date: `${year}-${String(goodFriday.getMonth() + 1).padStart(2, '0')}-${String(goodFriday.getDate()).padStart(2, '0')}`, name: 'Velký pátek' },
+                    { date: `${year}-${String(easterMonday.getMonth() + 1).padStart(2, '0')}-${String(easterMonday.getDate()).padStart(2, '0')}`, name: 'Velikonoční pondělí' }
+                ];
+                
+                // Zajistíme, aby svátky patřily skutečně k danému roku (pro případ přelomu roku u Velikonoc)
+                return holidays.filter(h => new Date(h.date).getFullYear() === year);
+            }
+
+            // --- STÁVAJÍCÍ FUNKCE (UPRAVENÉ) ---
 
             // Funkce pro přepínání tématu
             function toggleTheme() {
@@ -740,9 +824,8 @@
 
             // Upravená funkce pro export
             function exportCalendar() {
-                const currentMonth = parseInt(document.getElementById('monthSelect').value);
-                const shifts = generateShifts('2025-01-04', currentShift);
-                const monthShifts = shifts.filter(s => s.date.getMonth() === currentMonth);
+                const yearShifts = generateShifts(currentYear, currentShift);
+                const monthShifts = yearShifts.filter(s => s.date.getMonth() === currentMonth);
                 const monthNames = [
                     'Leden', 'Únor', 'Březen', 'Duben', 'Květen', 'Červen',
                     'Červenec', 'Srpen', 'Září', 'Říjen', 'Listopad', 'Prosinec'
@@ -750,7 +833,7 @@
 
                 // Vytvoření hlavičky exportu
                 let exportContent = [
-                    `PŘEHLED SMĚN - ${monthNames[currentMonth]} 2025`,
+                    `PŘEHLED SMĚN - ${monthNames[currentMonth]} ${currentYear}`,
                     `Směna: ${currentShift}`,
                     '======================================',
                     '',
@@ -762,7 +845,7 @@
                 monthShifts.forEach(shift => {
                     const date = shift.date;
                     const dayNames = ['Neděle', 'Pondělí', 'Úterý', 'Středa', 'Čtvrtek', 'Pátek', 'Sobota'];
-                    const dateStr = `${date.getDate()}.${date.getMonth() + 1}.2025`;
+                    const dateStr = `${date.getDate()}.${date.getMonth() + 1}.${currentYear}`;
                     const dayStr = dayNames[date.getDay()];
                     const isHoliday = HOLIDAYS.find(h => h.date === date.toISOString().split('T')[0]);
                     const isWeekend = date.getDay() === 0 || date.getDay() === 6;
@@ -850,7 +933,7 @@
                 const url = window.URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = `smeny-${currentShift}-${monthNames[currentMonth]}-2025.txt`;
+                a.download = `smeny-${currentShift}-${monthNames[currentMonth]}-${currentYear}.txt`;
                 a.click();
                 window.URL.revokeObjectURL(url);
             }
@@ -865,9 +948,8 @@
                 const SHIFT_HOURS = 11.5;
                 const NIGHT_BONUS_HOURS = 7.5; // Noční příplatek pouze za hodiny 22:00-6:00 mínus přestávka
 
-                const month = parseInt(document.getElementById('monthSelect').value);
-                const shifts = generateShifts('2025-01-04', currentShift);
-                const monthShifts = shifts.filter(s => s.date.getMonth() === month);
+                const shifts = generateShifts(currentYear, currentShift);
+                const monthShifts = shifts.filter(s => s.date.getMonth() === currentMonth);
 
                 // Výpočet základních hodin
                 const regularShifts = monthShifts.filter(s => s.shift === 'R');
@@ -883,7 +965,7 @@
 
                 // Výpočet přesčasových hodin
                 const overtimeEntries = Array.from(overtimeDays[currentShift].entries())
-                    .filter(([date]) => new Date(date).getMonth() === month);
+                    .filter(([date]) => new Date(date).getMonth() === currentMonth && new Date(date).getFullYear() === currentYear);
 
                 const overtimeRHours = overtimeEntries
                     .filter(([_, data]) => data.type === 'R')
@@ -988,25 +1070,6 @@
             }
 
             // Funkce pro správu notifikací
-            function toggleNotifications() {
-                if (!("Notification" in window)) {
-                    alert("Váš prohlížeč nepodporuje notifikace.");
-                    return;
-                }
-
-                if (Notification.permission === "granted") {
-                    notificationsEnabled = !notificationsEnabled;
-                    showNotification(notificationsEnabled ? "Notifikace byly zapnuty" : "Notifikace byly vypnuty");
-                } else if (Notification.permission !== "denied") {
-                    Notification.requestPermission().then(function (permission) {
-                        if (permission === "granted") {
-                            notificationsEnabled = true;
-                            showNotification("Notifikace byly zapnuty");
-                        }
-                    });
-                }
-            }
-
             function showNotification(message) {
                 const notification = document.getElementById('notification');
                 notification.textContent = message;
@@ -1014,6 +1077,20 @@
                 setTimeout(() => {
                     notification.style.display = 'none';
                 }, 3000);
+            }
+
+            // --- NOVÉ FUNKCE PRO POTVRZOVACÍ DIALOG ---
+            let confirmCallback = null;
+
+            function showConfirm(text, onYes) {
+                document.getElementById('confirmText').textContent = text;
+                confirmCallback = onYes;
+                document.getElementById('confirmModal').style.display = 'flex';
+            }
+
+            function closeConfirm() {
+                document.getElementById('confirmModal').style.display = 'none';
+                confirmCallback = null;
             }
 
             // Funkce pro správu poznámek
@@ -1044,47 +1121,44 @@
                 }
 
                 closeNoteModal();
-                const yearShifts = generateShifts('2025-01-04', currentShift);
-                createCalendar(yearShifts, parseInt(document.getElementById('monthSelect').value));
+                const yearShifts = generateShifts(currentYear, currentShift);
+                createCalendar(yearShifts, currentMonth);
             }
 
-            function generateShifts(startDate, shiftType) {
+            /**
+             * Dynamicky generuje směny pro celý zadaný rok
+             */
+            function generateShifts(year, shiftType) {
                 const shifts = [];
-                let currentDate = new Date(startDate);
-                const endDate = new Date('2025-12-31');
-
+                const startDate = new Date(year, 0, 1);
+                const endDate = new Date(year, 11, 31);
+                
                 const cycleLength = 12;
-                let dayInCycle = 0;
+                const msPerDay = 1000 * 60 * 60 * 24;
+
+                let currentDate = new Date(startDate);
 
                 while (currentDate <= endDate) {
-                    let shift = '';
-
+                    const diffInMs = currentDate - SHIFT_CYCLE_REFERENCE_DATE_A;
+                    const diffInDays = Math.round(diffInMs / msPerDay);
+                    
+                    // Vypočet dne v cyklu pro směnu A
+                    const dayInCycleA = (((diffInDays % cycleLength) + cycleLength) + SHIFT_CYCLE_A_OFFSET) % cycleLength;
+                    
+                    let dayInCycle;
                     switch(shiftType) {
-                        case 'A':
-                            if (dayInCycle < 3) shift = 'R';
-                            else if (dayInCycle < 6) shift = '-';
-                            else if (dayInCycle < 9) shift = 'N';
-                            else shift = '-';
-                            break;
-                        case 'B':
-                            if (dayInCycle < 3) shift = '-';
-                            else if (dayInCycle < 6) shift = 'R';
-                            else if (dayInCycle < 9) shift = '-';
-                            else shift = 'N';
-                            break;
-                        case 'C':
-                            if (dayInCycle < 3) shift = '-';
-                            else if (dayInCycle < 6) shift = 'N';
-                            else if (dayInCycle < 9) shift = '-';
-                            else shift = 'R';
-                            break;
-                        case 'D':
-                            if (dayInCycle < 3) shift = 'N';
-                            else if (dayInCycle < 6) shift = '-';
-                            else if (dayInCycle < 9) shift = 'R';
-                            else shift = '-';
-                            break;
+                        case 'A': dayInCycle = dayInCycleA; break;
+                        case 'B': dayInCycle = (dayInCycleA + 9) % cycleLength; break; // posun o -3 dny (resp. +9)
+                        case 'C': dayInCycle = (dayInCycleA + 6) % cycleLength; break; // posun o -6 dnů (resp. +6)
+                        case 'D': dayInCycle = (dayInCycleA + 3) % cycleLength; break; // posun o -9 dnů (resp. +3)
                     }
+
+                    // Cyklus: 0,1,2 = R; 3,4,5 = -; 6,7,8 = N; 9,10,11 = -
+                    let shift = '';
+                    if (dayInCycle < 3) shift = 'R';
+                    else if (dayInCycle < 6) shift = '-';
+                    else if (dayInCycle < 9) shift = 'N';
+                    else shift = '-';
 
                     shifts.push({
                         date: new Date(currentDate),
@@ -1092,11 +1166,11 @@
                     });
 
                     currentDate.setDate(currentDate.getDate() + 1);
-                    dayInCycle = (dayInCycle + 1) % cycleLength;
                 }
 
                 return shifts;
             }
+
 
             function updateStats(shifts, month) {
                 const stats = document.getElementById('stats');
@@ -1125,9 +1199,10 @@
                 // Přesčasy
                 const overtimeEntries = Array.from(overtimeDays[currentShift].entries())
                     .filter(([date]) => {
-                        if (!month) return true;
-                        const [year, m] = date.split('-');
-                        return parseInt(m) - 1 === month;
+                        const d = new Date(date);
+                        if (d.getFullYear() !== currentYear) return false;
+                        if (month === undefined) return true; // Roční pohled
+                        return d.getMonth() === month; // Měsíční pohled
                     });
 
                 // Výpočet regulárních a víkendových přesčasů
@@ -1162,15 +1237,6 @@
                 const saturdayN = saturdayOvertimes.filter(([_, data]) => data.type === 'N').length;
                 const sundayR = sundayOvertimes.filter(([_, data]) => data.type === 'R').length;
                 const sundayN = sundayOvertimes.filter(([_, data]) => data.type === 'N').length;
-
-                console.group('Debugging víkendových přesčasů');
-                console.log('Všechny přesčasy:', overtimeEntries);
-                console.log('Počty přesčasů:', {
-                    total: { R: totalOvertimeR, N: totalOvertimeN },
-                    saturday: { R: saturdayR, N: saturdayN },
-                    sunday: { R: sundayR, N: sundayN }
-                });
-                console.groupEnd();
 
                 // Aktualizace statistik
                 stats.innerHTML = `
@@ -1209,7 +1275,7 @@
                 calendar.innerHTML = '';
 
                 const today = new Date();
-                const month = selectedMonth !== undefined ? selectedMonth : today.getMonth();
+                const month = selectedMonth !== undefined ? selectedMonth : currentMonth;
 
                 if (!container) {
                     updateStats(shifts, month);
@@ -1220,7 +1286,7 @@
 
                 const monthName = document.createElement('div');
                 monthName.className = 'month-name';
-                monthName.textContent = months[month];
+                monthName.textContent = `${months[month]} ${currentYear}`;
                 monthDiv.appendChild(monthName);
 
                 const daysDiv = document.createElement('div');
@@ -1233,7 +1299,7 @@
                     daysDiv.appendChild(dayHeader);
                 });
 
-                const firstDay = new Date(2025, month, 1);
+                const firstDay = new Date(currentYear, month, 1);
                 let startingDay = firstDay.getDay() || 7;
                 startingDay--;
 
@@ -1243,20 +1309,20 @@
                     daysDiv.appendChild(emptyDay);
                 }
 
-                const daysInMonth = new Date(2025, month + 1, 0).getDate();
+                const daysInMonth = new Date(currentYear, month + 1, 0).getDate();
                 const currentWeek = Math.floor((today.getDate() + startingDay - 1) / 7);
 
                 for (let day = 1; day <= daysInMonth; day++) {
-                    const currentDate = new Date(2025, month, day);
+                    const currentDate = new Date(currentYear, month, day);
                     const dayDiv = document.createElement('div');
                     dayDiv.className = 'day';
 
                     const weekNumber = Math.floor((day + startingDay - 1) / 7);
-                    if (weekNumber === currentWeek && month === today.getMonth()) {
+                    if (weekNumber === currentWeek && month === today.getMonth() && currentYear === today.getFullYear()) {
                         dayDiv.classList.add('current-week');
                     }
 
-                    if (today.getDate() === day && today.getMonth() === month) {
+                    if (today.getDate() === day && today.getMonth() === month && today.getFullYear() === currentYear) {
                         dayDiv.classList.add('current-day');
                     }
 
@@ -1266,7 +1332,7 @@
 
                     dayDiv.innerHTML = day;
 
-                    const holidayDate = `2025-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                    const holidayDate = `${currentYear}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
                     const holidayInfo = HOLIDAYS.find(h => h.date === holidayDate);
                     if (holidayInfo) {
                         dayDiv.classList.add('holiday');
@@ -1344,49 +1410,108 @@
                 calendar.appendChild(monthDiv);
 
             }
+            
+            // --- NOVÉ FUNKCE PRO NAVIGACI ---
+
+            function previousYear() {
+                const yearSelect = document.getElementById('yearSelect');
+                let newYear = parseInt(yearSelect.value) - 1;
+                if (newYear >= parseInt(yearSelect.options[0].value)) {
+                    yearSelect.value = newYear;
+                    changeYear();
+                }
+            }
+
+            function nextYear() {
+                const yearSelect = document.getElementById('yearSelect');
+                let newYear = parseInt(yearSelect.value) + 1;
+                if (newYear <= parseInt(yearSelect.options[yearSelect.options.length - 1].value)) {
+                    yearSelect.value = newYear;
+                    changeYear();
+                }
+            }
+
+            function changeYear() {
+                currentYear = parseInt(document.getElementById('yearSelect').value);
+                HOLIDAYS = getHolidays(currentYear); // Aktualizace svátků pro nový rok
+                const yearShifts = generateShifts(currentYear, currentShift);
+                if (yearView) {
+                    createYearView();
+                    updateStats(yearShifts);
+                } else {
+                    createCalendar(yearShifts, currentMonth);
+                }
+            }
 
             function previousMonth() {
-                const select = document.getElementById('monthSelect');
-                let currentMonth = parseInt(select.value);
+                const yearSelect = document.getElementById('yearSelect');
                 if (currentMonth > 0) {
-                    select.value = currentMonth - 1;
-                    const yearShifts = generateShifts('2025-01-04', currentShift);
-                    createCalendar(yearShifts, currentMonth - 1);
+                    currentMonth--;
+                } else {
+                    currentMonth = 11;
+                    let newYear = currentYear - 1;
+                    if (newYear >= parseInt(yearSelect.options[0].value)) {
+                        currentYear = newYear;
+                        yearSelect.value = currentYear;
+                        HOLIDAYS = getHolidays(currentYear);
+                    } else {
+                        // Jsme na minimálním roce, dál nemůžeme
+                        currentMonth = 0;
+                        return;
+                    }
                 }
+                document.getElementById('monthSelect').value = currentMonth;
+                const yearShifts = generateShifts(currentYear, currentShift);
+                createCalendar(yearShifts, currentMonth);
             }
 
-            /**
-             * Increase the month in the month select by one and update the calendar accordingly.
-             * Does nothing if the current month is already December.
-             */
             function nextMonth() {
-                const select = document.getElementById('monthSelect');
-                let currentMonth = parseInt(select.value);
+                const yearSelect = document.getElementById('yearSelect');
                 if (currentMonth < 11) {
-                    select.value = currentMonth + 1;
-                    const yearShifts = generateShifts('2025-01-04', currentShift);
-                    createCalendar(yearShifts, currentMonth + 1);
+                    currentMonth++;
+                } else {
+                    currentMonth = 0;
+                    let newYear = currentYear + 1;
+                    if (newYear <= parseInt(yearSelect.options[yearSelect.options.length - 1].value)) {
+                        currentYear = newYear;
+                        yearSelect.value = currentYear;
+                        HOLIDAYS = getHolidays(currentYear);
+                    } else {
+                        // Jsme na maximálním roce, dál nemůžeme
+                        currentMonth = 11;
+                        return;
+                    }
                 }
+                document.getElementById('monthSelect').value = currentMonth;
+                const yearShifts = generateShifts(currentYear, currentShift);
+                createCalendar(yearShifts, currentMonth);
             }
+
+            function changeMonth() {
+                currentMonth = parseInt(document.getElementById('monthSelect').value);
+                const yearShifts = generateShifts(currentYear, currentShift);
+                createCalendar(yearShifts, currentMonth);
+            }
+
 
             function toggleYearView() {
                 yearView = !yearView;
                 document.getElementById('calendar').style.display = yearView ? 'none' : 'flex';
                 document.getElementById('yearView').style.display = yearView ? 'flex' : 'none';
                 document.getElementById('viewToggleText').textContent = yearView ? 'Měsíční výpis' : 'Celoroční výpis';
-                const yearShifts = generateShifts('2025-01-04', currentShift);
+                const yearShifts = generateShifts(currentYear, currentShift);
                 if (yearView) {
                     createYearView();
                     updateStats(yearShifts);
                 } else {
-                    createCalendar(yearShifts, parseInt(document.getElementById('monthSelect').value));
+                    createCalendar(yearShifts, currentMonth);
                 }
             }
 
             function createYearView() {
                 const yearTable = document.getElementById('yearTable');
                 yearTable.innerHTML = '';
-                const yearShifts = generateShifts('2025-01-04', currentShift);
+                const yearShifts = generateShifts(currentYear, currentShift);
                 const months = [
                     'Leden', 'Únor', 'Březen', 'Duben', 'Květen', 'Červen',
                     'Červenec', 'Srpen', 'Září', 'Říjen', 'Listopad', 'Prosinec'
@@ -1395,21 +1520,21 @@
 
                 // Create table rows for each month
                 for (let month = 0; month < 12; month++) {
-                    const firstDay = new Date(2025, month, 1);
-                    const daysInMonth = new Date(2025, month + 1, 0).getDate();
+                    const firstDay = new Date(currentYear, month, 1);
+                    const daysInMonth = new Date(currentYear, month + 1, 0).getDate();
 
                     let monthRow = `<tr><td class="month-name" rowspan="2">${months[month]}</td>`;
                     let daysRow = '';
                     let shiftsRow = '';
 
                     for (let day = 1; day <= daysInMonth; day++) {
-                        const currentDate = new Date(2025, month, day);
+                        const currentDate = new Date(currentYear, month, day);
                         let dayClass = '';
                         if (currentDate.getDay() === 0 || currentDate.getDay() === 6) {
                             dayClass = 'weekend';
                         }
 
-                        const holidayDate = `2025-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                        const holidayDate = `${currentYear}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
                         const holidayInfo = HOLIDAYS.find(h => h.date === holidayDate);
                         if (holidayInfo) {
                             dayClass = 'holiday';
@@ -1477,10 +1602,35 @@
             function initCalendar() {
                 loadOvertimeData();
                 loadCalculatorSettings(); // Přidat načtení nastavení
+                
+                // Nastavení aktuálního data
                 const today = new Date();
-                document.getElementById('monthSelect').value = today.getMonth();
-                const yearShifts = generateShifts('2025-01-04', currentShift);
-                createCalendar(yearShifts, today.getMonth());
+                currentYear = today.getFullYear();
+                currentMonth = today.getMonth();
+
+                // Naplnění volby roku
+                const yearSelect = document.getElementById('yearSelect');
+                const startYear = 2024;
+                const endYear = 2030;
+                for (let y = startYear; y <= endYear; y++) {
+                    const option = document.createElement('option');
+                    option.value = y;
+                    option.textContent = y;
+                    if (y === currentYear) {
+                        option.selected = true;
+                    }
+                    yearSelect.appendChild(option);
+                }
+                
+                // Nastavení měsíce
+                document.getElementById('monthSelect').value = currentMonth;
+                
+                // Načtení svátků pro aktuální rok
+                HOLIDAYS = getHolidays(currentYear);
+                
+                // Vygenerování směn a kalendáře
+                const yearShifts = generateShifts(currentYear, currentShift);
+                createCalendar(yearShifts, currentMonth);
 
                 // Inicializace výchozího nastavení bez localStorage
                 darkMode = false;
@@ -1489,22 +1639,20 @@
             }
 
             // Event listeners
-            document.getElementById('monthSelect').addEventListener('change', function(e) {
-                const yearShifts = generateShifts('2025-01-04', currentShift);
-                createCalendar(yearShifts, parseInt(e.target.value));
-            });
+            document.getElementById('monthSelect').addEventListener('change', changeMonth);
+            document.getElementById('yearSelect').addEventListener('change', changeYear);
 
             document.querySelectorAll('.shift-btn').forEach(btn => {
                 btn.addEventListener('click', function() {
                     document.querySelectorAll('.shift-btn').forEach(b => b.classList.remove('active'));
                     this.classList.add('active');
                     currentShift = this.dataset.shift;
-                    const yearShifts = generateShifts('2025-01-04', currentShift);
+                    const yearShifts = generateShifts(currentYear, currentShift);
                     if (yearView) {
                         createYearView();
                         updateStats(yearShifts);
                     } else {
-                        createCalendar(yearShifts, parseInt(document.getElementById('monthSelect').value));
+                        createCalendar(yearShifts, currentMonth);
                     }
                 });
             });
@@ -1525,12 +1673,12 @@
 
             // Automatická aktualizace kalendáře každou minutu
             setInterval(() => {
-                const yearShifts = generateShifts('2025-01-04', currentShift);
+                const yearShifts = generateShifts(currentYear, currentShift);
                 if (yearView) {
                     createYearView();
                     updateStats(yearShifts);
                 } else {
-                    createCalendar(yearShifts, parseInt(document.getElementById('monthSelect').value));
+                    createCalendar(yearShifts, currentMonth);
                 }
             }, 60000);
 
@@ -1539,16 +1687,16 @@
 
             // Přidání nových funkcí pro mzdovou kalkulačku
             function showWageCalculator() {
-                const month = parseInt(document.getElementById('monthSelect').value);
                 const monthNames = [
                     'Leden', 'Únor', 'Březen', 'Duben', 'Květen', 'Červen',
                     'Červenec', 'Srpen', 'Září', 'Říjen', 'Listopad', 'Prosinec'
                 ];
 
-                document.getElementById('selectedMonthName').textContent = monthNames[month];
+                document.getElementById('selectedMonthName').textContent = monthNames[currentMonth];
+                document.getElementById('selectedYearName').textContent = currentYear;
 
-                const shifts = generateShifts('2025-01-04', currentShift);
-                const monthShifts = shifts.filter(s => s.date.getMonth() === month);
+                const shifts = generateShifts(currentYear, currentShift);
+                const monthShifts = shifts.filter(s => s.date.getMonth() === currentMonth);
 
                 // Počítání směn
                 const morningShifts = monthShifts.filter(s => s.shift === 'R').length;
@@ -1569,8 +1717,11 @@
                 document.getElementById('holidayShiftCount').textContent = holidayShifts;
 
                 // Add overtime shifts to summary
-                const overtimeR = Array.from(overtimeDays[currentShift].entries()).filter(([_, data]) => data.type === 'R').length;
-                const overtimeN = Array.from(overtimeDays[currentShift].entries()).filter(([_, data]) => data.type === 'N').length;
+                const overtimeEntries = Array.from(overtimeDays[currentShift].entries())
+                    .filter(([date]) => new Date(date).getMonth() === currentMonth && new Date(date).getFullYear() === currentYear);
+                
+                const overtimeR = overtimeEntries.filter(([_, data]) => data.type === 'R').length;
+                const overtimeN = overtimeEntries.filter(([_, data]) => data.type === 'N').length;
 
                 document.getElementById('overtimeRCount').textContent = overtimeR;
                 document.getElementById('overtimeNCount').textContent = overtimeN;
@@ -1597,9 +1748,8 @@
                 const NIGHT_BONUS_HOURS = 7.5; // Noční příplatek pouze za hodiny 22:00-6:00 mínus přestávka
 
                 // Získání směn pro aktuální měsíc
-                const month = parseInt(document.getElementById('monthSelect').value);
-                const shifts = generateShifts('2025-01-04', currentShift);
-                const monthShifts = shifts.filter(s => s.date.getMonth() === month);
+                const shifts = generateShifts(currentYear, currentShift);
+                const monthShifts = shifts.filter(s => s.date.getMonth() === currentMonth);
 
                 // Výpočet základních hodin
                 const regularShifts = monthShifts.filter(s => s.shift === 'R');
@@ -1615,7 +1765,7 @@
 
                 // Výpočet přesčasových hodin
                 const overtimeEntries = Array.from(overtimeDays[currentShift].entries())
-                    .filter(([date]) => new Date(date).getMonth() === month);
+                    .filter(([date]) => new Date(date).getMonth() === currentMonth && new Date(date).getFullYear() === currentYear);
 
                 const overtimeRHours = overtimeEntries
                     .filter(([_, data]) => data.type === 'R')
@@ -1702,7 +1852,7 @@
                 // Aktualizace výsledků
                 const nightWageDisplay = `
                     <div class="wage-result-item">
-                        <strong>Příplatek za noční (${(nightHours * (NIGHT_BONUS_HOURS / SHIFT_HOURS)).toFixed(1)} hod):</strong>
+                        <strong>Příplatek za noční (${(nightShifts.length * NIGHT_BONUS_HOURS).toFixed(1)} hod):</strong>
                         <span>${nightWageWithOvertime.toLocaleString()} Kč</span>
                         ${overtimeNHours > 0 ? `<small>(včetně ${(overtimeNHours * (NIGHT_BONUS_HOURS / SHIFT_HOURS)).toFixed(1)} hod přesčas)</small>` : ''}
                     </div>
@@ -1798,7 +1948,7 @@
             }
 
             // Přidat nové funkce pro modální okno přesčasů
-            let selectedDate = null; // Přidat novou proměnnou pro vybraný datum
+            let selectedDate = null; // Přidat novou proměnou pro vybraný datum
 
             function showOvertimeTypeModal(date) {
                 selectedDate = date;
@@ -1818,53 +1968,20 @@
                     // Oprava ISO datumu - použití lokálního času
                     const dateStr = `${selectedDate.getFullYear()}-${String(selectedDate.getMonth() + 1).padStart(2, '0')}-${String(selectedDate.getDate()).padStart(2, '0')}`;
 
-                    console.group('Přidávání přesčasu');
-                    console.log('Vybraný datum:', {
-                        full: selectedDate,
-                        iso: dateStr,
-                        den: selectedDate.getDay(),
-                        denText: ['Neděle', 'Pondělí', 'Úterý', 'Středa', 'Čtvrtek', 'Pátek', 'Sobota'][selectedDate.getDay()]
-                    });
-
-                    const shifts = generateShifts('2025-01-04', currentShift);
+                    const shifts = generateShifts(currentYear, currentShift);
                     const selectedShift = shifts.find(s => {
                         const shiftDateStr = `${s.date.getFullYear()}-${String(s.date.getMonth() + 1).padStart(2, '0')}-${String(s.date.getDate()).padStart(2, '0')}`;
                         return shiftDateStr === dateStr;
                     });
 
-                    if (selectedShift) {
-                        console.log('Existující směna:', selectedShift);
-                    }
-
                     // Nová logika pro kontrolu konfliktu směn
                     if (selectedShift && selectedShift.shift === type) {
-                        console.warn('Konflikt směn:', {
-                            existující: selectedShift.shift,
-                            novýPřesčas: type
-                        });
-                        console.groupEnd();
-                        alert(`Nelze přidat ${type === 'R' ? 'ranní' : 'noční'} přesčas, když je v tento den již naplánovaná ${type === 'R' ? 'ranní' : 'noční'} směna.`);
+                        showNotification(`Nelze přidat ${type === 'R' ? 'ranní' : 'noční'} přesčas, když je v tento den již naplánovaná ${type === 'R' ? 'ranní' : 'noční'} směna.`);
                         return;
                     }
 
                     const hours = parseFloat(document.getElementById('overtimeHours').value);
                     overtimeDays[currentShift].set(dateStr, { type, hours });
-
-                    console.log('Přidaný přesčas:', {
-                        datum: dateStr,
-                        typ: type,
-                        hodiny: hours
-                    });
-
-                    // Výpis všech přesčasů po přidání
-                    console.log('Aktuální přesčasy:', Array.from(overtimeDays[currentShift].entries()).map(([date, data]) => ({
-                        datum: date,
-                        den: new Date(date).getDay(),
-                        denText: ['Neděle', 'Pondělí', 'Úterý', 'Středa', 'Čtvrtek', 'Pátek', 'Sobota'][new Date(date).getDay()],
-                        typ: data.type,
-                        hodiny: data.hours
-                    })));
-                    console.groupEnd();
 
                     saveOvertimeData();
                     refreshCalendar();
@@ -1877,11 +1994,6 @@
                     // Použít stejný formát data jako při přidávání
                     const dateStr = `${selectedDate.getFullYear()}-${String(selectedDate.getMonth() + 1).padStart(2, '0')}-${String(selectedDate.getDate()).padStart(2, '0')}`;
 
-                    console.log('Odebírání přesčasu:', {
-                        datum: dateStr,
-                        existuje: overtimeDays[currentShift].has(dateStr)
-                    });
-
                     overtimeDays[currentShift].delete(dateStr);
                     saveOvertimeData();
                     refreshCalendar();
@@ -1890,13 +2002,12 @@
             }
 
             function refreshCalendar() {
-                const yearShifts = generateShifts('2025-01-04', currentShift);
-                // Použít aktuálně vybraný měsíc místo selectedDate
-                const currentMonth = parseInt(document.getElementById('monthSelect').value);
+                const yearShifts = generateShifts(currentYear, currentShift);
                 createCalendar(yearShifts, currentMonth);
 
                 if (document.getElementById('wageCalculatorModal').style.display === 'flex') {
-                    calculateWages();
+                    // Aktualizovat i přehled v kalkulačce
+                    showWageCalculator();
                 }
             }
 
@@ -1908,12 +2019,12 @@
 
             // Nová funkce pro vymazání přesčasů
             function clearOvertimes() {
-                if (confirm('Opravdu chcete vymazat všechny přesčasy pro směnu ' + currentShift + '?')) {
+                showConfirm('Opravdu chcete vymazat všechny přesčasy pro směnu ' + currentShift + '?', () => {
                     overtimeDays[currentShift].clear();
                     saveOvertimeData();
                     refreshCalendar();
                     showNotification('Přesčasy byly vymazány');
-                }
+                });
             }
 
             // Přidat event listenery pro ukládání změn
@@ -1934,6 +2045,15 @@
                         element.addEventListener('change', saveCalculatorSettings);
                     }
                 });
+
+                // Event listenery pro potvrzovací dialog
+                document.getElementById('confirmYes').addEventListener('click', () => {
+                    if (confirmCallback) {
+                        confirmCallback();
+                    }
+                    closeConfirm();
+                });
+                document.getElementById('confirmNo').addEventListener('click', closeConfirm);
             });
         </script>
     </div>
